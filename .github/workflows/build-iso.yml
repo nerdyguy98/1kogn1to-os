@@ -41,8 +41,8 @@ jobs:
             --mirror-bootstrap https://deb.debian.org/debian \
             --mirror-chroot https://deb.debian.org/debian \
             --mirror-binary https://deb.debian.org/debian \
-            --mirror-chroot-security https://security.debian.org/debian-security \
-            --mirror-binary-security https://security.debian.org/debian-security \
+            --mirror-chroot-security https://security.debian.org/debian-security
+            --mirror-binary-security https://security.debian.org/debian-security
             --keyring-packages debian-archive-keyring \
             --bootappend-live "boot=live components username=1kogn1to hostname=1kogn1to"
           echo '--- Verify generated live-build mirror configuration ---'
