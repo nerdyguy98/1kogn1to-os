@@ -1,36 +1,70 @@
-# This is a basic workflow to help you get started with Actions
+name: Build 1K0GN1T0 OS ISO
 
-name: CI
-
-# Controls when the workflow will run
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+permissions:
+  contents: read
+
 jobs:
-  # This workflow contains a single job called "build"
   build:
-    # The type of runner that the job will run on
-    runs-on: ubuntu-latest
-
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v4
+      - name: Check out source
+        uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
-
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      - name: Install Debian Live build tools
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          sudo apt-get update
+          sudo apt-get install -y live-build debootstrap squashfs-tools xorriso \
+            isolinux syslinux-common dosfstools mtools debian-archive-keyring
+
+      - name: Configure Debian (not Ubuntu) Trixie
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # Ubuntu's live-build package can inherit Ubuntu mode defaults.
+          # Remove saved config and force Debian mode explicitly.
+          rm -rf config/binary config/bootstrap config/chroot config/common config/source
+          sudo rm -rf chroot .build .build-* || true
+          lb config \
+            --ignore-system-defaults \
+            --mode debian \
+            --distribution trixie \
+            --architectures amd64 \
+            --binary-images iso-hybrid \
+            --archive-areas "main contrib non-free non-free-firmware" \
+            --debian-installer live \
+            --mirror-bootstrap https://deb.debian.org/debian \
+            --mirror-chroot https://deb.debian.org/debian \
+            --mirror-binary https://deb.debian.org/debian \
+            --mirror-chroot-security https://security.debian.org/debian-security \
+            --mirror-binary-security https://security.debian.org/debian-security \
+            --keyring-packages debian-archive-keyring \
+            --bootappend-live "boot=live components username=1kogn1to hostname=1kogn1to"
+          echo '--- Verify generated live-build mirror configuration ---'
+          grep -RniE 'archive\.ubuntu\.com|ports\.ubuntu\.com|security\.ubuntu\.com' config && { echo 'ERROR: Ubuntu mirror found in live-build config'; exit 1; } || true
+          grep -RniE 'deb\.debian\.org|security\.debian\.org' config || true
+          echo '--- Bootstrap config ---'
+          cat config/bootstrap
+
+      - name: Build live ISO
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo lb build
+          mkdir -p build-output
+          sudo find . -maxdepth 1 -type f -name '*.iso' -exec cp {} build-output/1K0GN1T0-OS-amd64.iso \\;
+          test -s build-output/1K0GN1T0-OS-amd64.iso
+          sha256sum build-output/1K0GN1T0-OS-amd64.iso > build-output/1K0GN1T0-OS-amd64.iso.sha256
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 1K0GN1T0-OS-amd64-ISO
+          path: build-output/
+          if-no-files-found: error
+          retention-days: 14
